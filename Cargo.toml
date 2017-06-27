@@ -1,0 +1,7 @@
+[package]
+name = "hocon"
+version = "0.1.0"
+authors = ["Rogach <platon7pronko@gmail.com>"]
+
+[dependencies]
+nom = { version = "^3.1", features = [ "verbose-errors" ] }
