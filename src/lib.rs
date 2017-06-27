@@ -6,14 +6,14 @@ use std::collections::HashMap;
 use std::string::String;
 
 #[derive(Debug, PartialEq)]
-pub enum JsonValue<'a> {
+pub enum JsonValue {
     Null,
     Boolean(bool),
     Int(i64),
     Float(f64),
     String(String),
-    Array(Vec<JsonValue<'a>>),
-    Object(HashMap<&'a str, JsonValue<'a>>)
+    Array(Vec<JsonValue>),
+    Object(HashMap<String, JsonValue>)
 }
 
 named!(
@@ -23,7 +23,9 @@ named!(
         json_boolean |
         json_float |
         json_int |
-        json_string
+        json_string |
+        json_array |
+        json_object
     )
 );
 
@@ -98,10 +100,54 @@ named!(
     )
 );
 
+named!(
+    json_array<&[u8], JsonValue>,
+    map!(
+        delimited!(
+            char!('['),
+            separated_list!(
+                char!(','),
+                json_value
+            ),
+            char!(']')
+        ),
+        |elems| JsonValue::Array(elems)
+    )
+);
+
+named!(
+    json_object<&[u8], JsonValue>,
+    map!(
+        delimited!(
+            char!('{'),
+            separated_list!(
+                char!(','),
+                separated_pair!(
+                    json_string,
+                    char!(':'),
+                    json_value
+                )
+            ),
+            char!('}')
+        ),
+        |pairs| {
+            let mut obj = HashMap::new();
+            for (key, value) in pairs {
+                if let JsonValue::String(key_string) = key {
+                    obj.insert(key_string, value);
+                }
+            }
+            JsonValue::Object(obj)
+        }
+    )
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::JsonValue::*;
     use nom::IResult;
+    use std::string::String as Str;
 
     macro_rules! parse_test(
         ($parser: expr, $input: expr, $output: expr) => (
@@ -110,35 +156,57 @@ mod tests {
     );
 
     #[test] fn test_json_null() {
-        parse_test!(json_value, "null", JsonValue::Null);
+        parse_test!(json_value, "null", Null);
     }
 
     #[test] fn test_json_boolean() {
-        parse_test!(json_value, "true", JsonValue::Boolean(true));
-        parse_test!(json_value, "false", JsonValue::Boolean(false));
+        parse_test!(json_value, "true", Boolean(true));
+        parse_test!(json_value, "false", Boolean(false));
     }
 
     #[test] fn test_json_int() {
-        parse_test!(json_value, "0", JsonValue::Int(0));
-        parse_test!(json_value, "1", JsonValue::Int(1));
-        parse_test!(json_value, "-2", JsonValue::Int(-2));
-        parse_test!(json_value, "42", JsonValue::Int(42));
-        parse_test!(json_value, "2834293023", JsonValue::Int(2834293023));
+        parse_test!(json_value, "0", Int(0));
+        parse_test!(json_value, "1", Int(1));
+        parse_test!(json_value, "-2", Int(-2));
+        parse_test!(json_value, "42", Int(42));
+        parse_test!(json_value, "2834293023", Int(2834293023));
     }
 
     #[test] fn test_json_float() {
-        parse_test!(json_value, "0.0", JsonValue::Float(0.0));
-        parse_test!(json_value, "4.2", JsonValue::Float(4.2));
-        parse_test!(json_value, "-4.2", JsonValue::Float(-4.2));
-        parse_test!(json_value, "-4.2e1", JsonValue::Float(-42.0));
-        parse_test!(json_value, "-4.2e-2", JsonValue::Float(-0.042));
+        parse_test!(json_value, "0.0", Float(0.0));
+        parse_test!(json_value, "4.2", Float(4.2));
+        parse_test!(json_value, "-4.2", Float(-4.2));
+        parse_test!(json_value, "-4.2e1", Float(-42.0));
+        parse_test!(json_value, "-4.2e-2", Float(-0.042));
     }
 
     #[test] fn test_json_string() {
-        parse_test!(json_value, "\"\"", JsonValue::String(String::from("")));
-        parse_test!(json_value, "\"a\"", JsonValue::String(String::from("a")));
-        parse_test!(json_value, "\"ab\"", JsonValue::String(String::from("ab")));
-        parse_test!(json_value, "\"a b\"", JsonValue::String(String::from("a b")));
-        parse_test!(json_value, "\"a\\\"b\"", JsonValue::String(String::from("a\"b")));
+        parse_test!(json_value, "\"\"", String(Str::from("")));
+        parse_test!(json_value, "\"a\"", String(Str::from("a")));
+        parse_test!(json_value, "\"ab\"", String(Str::from("ab")));
+        parse_test!(json_value, "\"a b\"", String(Str::from("a b")));
+        parse_test!(json_value, "\"a\\\"b\"", String(Str::from("a\"b")));
+    }
+
+    #[test] fn test_json_array() {
+        parse_test!(json_value, "[]", Array(vec![]));
+        parse_test!(json_value, "[null]", Array(vec![Null]));
+        parse_test!(json_value, "[1,2]", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value, "[1,[2,3]]", Array(vec![Int(1), Array(vec![Int(2), Int(3)])]));
+    }
+
+    #[test] fn test_json_object() {
+        parse_test!(json_object, "{}", Object(HashMap::new()));
+        parse_test!(json_object, "{\"a\":42}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(42));
+            m
+        }));
+        parse_test!(json_object, "{\"a\":42,\"b\":43}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(42));
+            m.insert(Str::from("b"), Int(43));
+            m
+        }));
     }
 }
