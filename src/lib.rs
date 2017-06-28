@@ -193,6 +193,27 @@ named!(
     )
 );
 
+fn merge_json(
+    old: JsonValue,
+    new: JsonValue
+) -> JsonValue {
+    match (old, new) {
+        (JsonValue::Object(mut obj_prev), JsonValue::Object(mut obj_new)) => {
+            for (key, value) in obj_new.drain() {
+                let new_value = match obj_prev.remove(&key) {
+                    Some(old_value) => merge_json(old_value, value),
+                    _ => value
+                };
+                obj_prev.insert(key, new_value);
+            }
+            JsonValue::Object(obj_prev)
+        },
+        (_, new) => {
+            new
+        }
+    }
+}
+
 named!(
     json_object_root<&[u8], JsonValue>,
     map!(
@@ -211,11 +232,19 @@ named!(
         ),
         |pairs| {
             let mut obj = HashMap::new();
+
             for (key, value) in pairs {
                 if let JsonValue::String(key_string) = key {
-                    obj.insert(key_string, value);
+
+                    let new_value = match obj.remove(&key_string) {
+                        Some(old_value) => merge_json(old_value, value),
+                        None => value
+                    };
+                    obj.insert(key_string, new_value);
+
                 }
             }
+
             JsonValue::Object(obj)
         }
     )
@@ -436,6 +465,61 @@ mod tests {
             m.insert(Str::from("b"), Int(43));
             m
         }));
+    }
+
+    #[test] fn test_object_merging() {
+        parse_test!(
+            json_value_root,
+            r#"
+"a" { "b": 1 }
+"a" { "c": 2 }
+"#,
+            Object({
+                let mut m1 = HashMap::new();
+                m1.insert(Str::from("b"), Int(1));
+                m1.insert(Str::from("c"), Int(2));
+                let mut m2 = HashMap::new();
+                m2.insert(Str::from("a"), Object(m1));
+                m2
+            })
+        );
+
+        parse_test!(
+            json_value_root,
+            r#"
+"a" { "b": { "c": 1 } }
+"a" { "b": { "d": 2 } }
+"#,
+            Object({
+                let mut m1 = HashMap::new();
+                m1.insert(Str::from("c"), Int(1));
+                m1.insert(Str::from("d"), Int(2));
+                let mut m2 = HashMap::new();
+                m2.insert(Str::from("b"), Object(m1));
+                let mut m3 = HashMap::new();
+                m3.insert(Str::from("a"), Object(m2));
+                m3
+            })
+        );
+
+        parse_test!(
+            json_value_root,
+            r#"
+"a" { "b": { "c": 1 }, "e": 3 }
+"a" { "b": { "d": 2 } }
+"#,
+            Object({
+                let mut m1 = HashMap::new();
+                m1.insert(Str::from("c"), Int(1));
+                m1.insert(Str::from("d"), Int(2));
+                let mut m2 = HashMap::new();
+                m2.insert(Str::from("b"), Object(m1));
+                m2.insert(Str::from("e"), Int(3));
+                let mut m3 = HashMap::new();
+                m3.insert(Str::from("a"), Object(m2));
+                m3
+            })
+        );
     }
 
 }
