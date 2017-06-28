@@ -191,14 +191,15 @@ named!(
             tuple!(char!('{'), json_whitespace),
             separated_list!(
                 inferrable_comma,
-                separated_pair!(
+                tuple!(
                     json_string,
-                    tuple!(
-                        json_whitespace,
-                        alt!(char!(':') | char!('=')),
-                        json_whitespace
-                    ),
-                    json_value
+                    alt!(
+                        preceded!(json_whitespace, json_object) |
+                        preceded!(
+                            tuple!(json_whitespace, alt!(char!(':') | char!('=')), json_whitespace),
+                            json_value
+                        )
+                    )
                 )
             ),
             tuple!(json_whitespace, char!('}'))
@@ -391,6 +392,23 @@ mod tests {
             m.insert(Str::from("a"), Int(42));
             m.insert(Str::from("b"), Int(43));
             m
+        }));
+    }
+
+    #[test] fn test_skipping_colon_before_object_values() {
+        parse_test!(json_value, "{\"a\" = { \"b\":43 }}", Object({
+            let mut m1 = HashMap::new();
+            m1.insert(Str::from("b"), Int(43));
+            let mut m2 = HashMap::new();
+            m2.insert(Str::from("a"), Object(m1));
+            m2
+        }));
+        parse_test!(json_value, "{\"a\" { \"b\":43 }}", Object({
+            let mut m1 = HashMap::new();
+            m1.insert(Str::from("b"), Int(43));
+            let mut m2 = HashMap::new();
+            m2.insert(Str::from("a"), Object(m1));
+            m2
         }));
     }
 
