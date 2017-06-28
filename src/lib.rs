@@ -38,26 +38,29 @@ named!(
     )
 );
 
-named!(
-    comment<&[u8], &[u8]>,
-    recognize!(
-        tuple!(
-            alt!(tag!("#") | tag!("//")),
-            opt!(is_not!("\n")),
-            alt!(eof!() | tag!("\n"))
-        )
-    )
-);
-
-named!(
-    json_whitespace<&[u8], &[u8]>,
-    recognize!(
-        tuple!(
-            opt!(is_a!(" \t")),
-            many0!(tuple!(alt!(tag!("\n") | comment), opt!(alt!(eof!() | is_a!(" \t")))))
-        )
-    )
-);
+fn json_whitespace(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    let len = input.len();
+    let mut i = 0;
+    while i < len {
+        let c = input[i];
+        if c == b' ' || c == b'\t' || c == b'\n' {
+            i += 1;
+        } else if c == b'#' {
+            i += 1;
+            while i < len && input[i] != b'\n' {
+                i += 1;
+            }
+        } else if c == b'/' && i < len - 1 && input[i+1] == b'/' {
+            i += 2;
+            while i < len && input[i] != b'\n' {
+                i += 1;
+            }
+        } else {
+            return IResult::Done(&input[i..], &input[..i]);
+        }
+    }
+    return IResult::Done(&input[i..], &input[..i]);
+}
 
 named!(
     json_null<&[u8], JsonValue>,
@@ -247,14 +250,10 @@ mod tests {
     );
 
     #[test] fn test_comments() {
-        parse_test_eq!(comment, "#");
-        parse_test_eq!(comment, "#\n");
-        parse_test_eq!(comment, "# \n");
-        parse_test_eq!(comment, "#some comment");
-        parse_test_eq!(comment, "#some comment\n");
         parse_test_eq!(json_whitespace, "");
         parse_test_eq!(json_whitespace, "\n");
         parse_test_eq!(json_whitespace, "\n#");
+        parse_test_eq!(json_whitespace, "#\n");
         parse_test_eq!(json_whitespace, " ");
         parse_test_eq!(json_whitespace, " #");
         parse_test_eq!(json_whitespace, " # c");
