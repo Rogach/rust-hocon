@@ -56,10 +56,46 @@ fn json_whitespace(input: &[u8]) -> IResult<&[u8], &[u8]> {
                 i += 1;
             }
         } else {
-            return IResult::Done(&input[i..], &input[..i]);
+            break;
         }
     }
     return IResult::Done(&input[i..], &input[..i]);
+}
+
+fn inferrable_comma(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    let len = input.len();
+    let mut i = 0;
+    let mut got_newline = false;
+    let mut got_comma = false;
+    while i < len {
+        let c = input[i];
+        if c == b' ' || c == b'\t' {
+            i += 1;
+        } else if c == b'\n' {
+            got_newline = true;
+            i += 1;
+        } else if c == b'#' {
+            i += 1;
+            while i < len && input[i] != b'\n' {
+                i += 1;
+            }
+        } else if c == b'/' && i < len - 1 && input[i+1] == b'/' {
+            i += 2;
+            while i < len && input[i] != b'\n' {
+                i += 1;
+            }
+        } else if c == b',' && !got_comma {
+            got_comma = true;
+            i += 1;
+        } else {
+            break;
+        }
+    }
+    if got_comma || got_newline {
+        return IResult::Done(&input[i..], &input[..i]);
+    } else {
+        return IResult::Error(error_position!(ErrorKind::Char, b","));
+    }
 }
 
 named!(
@@ -139,7 +175,7 @@ named!(
         delimited!(
             tuple!(char!('['), json_whitespace),
             separated_list!(
-                tuple!(json_whitespace, char!(','), json_whitespace),
+                inferrable_comma,
                 json_value
             ),
             tuple!(json_whitespace, char!(']'))
@@ -154,7 +190,7 @@ named!(
         delimited!(
             tuple!(char!('{'), json_whitespace),
             separated_list!(
-                tuple!(json_whitespace, char!(','), json_whitespace),
+                inferrable_comma,
                 separated_pair!(
                     json_string,
                     tuple!(json_whitespace, char!(':'), json_whitespace),
@@ -321,6 +357,23 @@ mod tests {
         parse_test!(json_value_root, "{\"a\":1 , \"b\":2}", m2());
         parse_test!(json_value_root, "{\"a\":1 ,\n \"b\":2}", m2());
         parse_test!(json_value_root, "{\"a\":1 ,\n\n \"b\":2}", m2());
+    }
+
+    #[test] fn test_comma_inference() {
+        parse_test!(json_value_root, "[1\n2]", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value_root, "[1#a\n2]", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value_root, "[1 , 2 \n, 3]", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, "[1 , 2 \n\n\n, 3]", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, "[1 , 2 \n# s\n\n, 3]", Array(vec![Int(1), Int(2), Int(3)]));
+
+        let m2 = || {
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(1));
+            m.insert(Str::from("b"), Int(2));
+            Object(m)
+        };
+        parse_test!(json_value_root, "{ \"a\":1\n\"b\":2 }", m2());
+        parse_test!(json_value_root, "{ \"a\":1,\n\"b\":2 }", m2());
     }
 
 }
