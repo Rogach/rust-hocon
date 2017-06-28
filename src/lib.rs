@@ -17,7 +17,16 @@ pub enum JsonValue {
 }
 
 named!(
-    pub json_value<&[u8], JsonValue>,
+    pub json_value_root<&[u8], JsonValue>,
+    delimited!(
+        json_whitespace,
+        json_value,
+        json_whitespace
+    )
+);
+
+named!(
+    json_value<&[u8], JsonValue>,
     alt_complete!(
         json_null |
         json_boolean |
@@ -26,6 +35,27 @@ named!(
         json_string |
         json_array |
         json_object
+    )
+);
+
+named!(
+    comment<&[u8], &[u8]>,
+    recognize!(
+        tuple!(
+            alt!(tag!("#") | tag!("//")),
+            opt!(is_not!("\n")),
+            alt!(eof!() | tag!("\n"))
+        )
+    )
+);
+
+named!(
+    json_whitespace<&[u8], &[u8]>,
+    recognize!(
+        tuple!(
+            opt!(is_a!(" \t")),
+            many0!(tuple!(alt!(tag!("\n") | comment), opt!(alt!(eof!() | is_a!(" \t")))))
+        )
     )
 );
 
@@ -104,12 +134,12 @@ named!(
     json_array<&[u8], JsonValue>,
     map!(
         delimited!(
-            char!('['),
+            tuple!(char!('['), json_whitespace),
             separated_list!(
-                char!(','),
+                tuple!(json_whitespace, char!(','), json_whitespace),
                 json_value
             ),
-            char!(']')
+            tuple!(json_whitespace, char!(']'))
         ),
         |elems| JsonValue::Array(elems)
     )
@@ -119,16 +149,16 @@ named!(
     json_object<&[u8], JsonValue>,
     map!(
         delimited!(
-            char!('{'),
+            tuple!(char!('{'), json_whitespace),
             separated_list!(
-                char!(','),
+                tuple!(json_whitespace, char!(','), json_whitespace),
                 separated_pair!(
                     json_string,
-                    char!(':'),
+                    tuple!(json_whitespace, char!(':'), json_whitespace),
                     json_value
                 )
             ),
-            char!('}')
+            tuple!(json_whitespace, char!('}'))
         ),
         |pairs| {
             let mut obj = HashMap::new();
@@ -196,17 +226,102 @@ mod tests {
     }
 
     #[test] fn test_json_object() {
-        parse_test!(json_object, "{}", Object(HashMap::new()));
-        parse_test!(json_object, "{\"a\":42}", Object({
+        parse_test!(json_value, "{}", Object(HashMap::new()));
+        parse_test!(json_value, "{\"a\":42}", Object({
             let mut m = HashMap::new();
             m.insert(Str::from("a"), Int(42));
             m
         }));
-        parse_test!(json_object, "{\"a\":42,\"b\":43}", Object({
+        parse_test!(json_value, "{\"a\":42,\"b\":43}", Object({
             let mut m = HashMap::new();
             m.insert(Str::from("a"), Int(42));
             m.insert(Str::from("b"), Int(43));
             m
         }));
     }
+
+    macro_rules! parse_test_eq(
+        ($parser: expr, $input: expr) => (
+            assert_eq!($parser($input.as_bytes()), IResult::Done(&b""[..], $input.as_bytes()))
+        )
+    );
+
+    #[test] fn test_comments() {
+        parse_test_eq!(comment, "#");
+        parse_test_eq!(comment, "#\n");
+        parse_test_eq!(comment, "# \n");
+        parse_test_eq!(comment, "#some comment");
+        parse_test_eq!(comment, "#some comment\n");
+        parse_test_eq!(json_whitespace, "");
+        parse_test_eq!(json_whitespace, "\n");
+        parse_test_eq!(json_whitespace, "\n#");
+        parse_test_eq!(json_whitespace, " ");
+        parse_test_eq!(json_whitespace, " #");
+        parse_test_eq!(json_whitespace, " # c");
+        parse_test_eq!(json_whitespace, " # c\n");
+        parse_test_eq!(json_whitespace, " # c\n ");
+        parse_test_eq!(json_whitespace, " # c\n  ");
+        parse_test_eq!(json_whitespace, " # c\n  ");
+        parse_test_eq!(json_whitespace, " # c\n  //");
+        parse_test_eq!(json_whitespace, " # c\n  //\n");
+        parse_test_eq!(json_whitespace, " # c\n  //\n////");
+        parse_test!(json_value_root, "true//some comment", Boolean(true));
+        parse_test!(json_value_root, "false#some comment", Boolean(false));
+        parse_test!(json_value_root, "1 //some comment", Int(1));
+        parse_test!(json_value_root, "//some comment\n 2 ", Int(2));
+        parse_test!(json_value_root, " [ ] ", Array(vec![]));
+        parse_test!(json_value_root, " [ 1] ", Array(vec![Int(1)]));
+        parse_test!(json_value_root, " [1 ] ", Array(vec![Int(1)]));
+        parse_test!(json_value_root, " [ 1 ] ", Array(vec![Int(1)]));
+        parse_test!(json_value_root, " [ 1,2 ] ", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value_root, " [ 1 ,2 ] ", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value_root, " [ 1, 2 ] ", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value_root, " [ 1 , 2 ] ", Array(vec![Int(1), Int(2)]));
+        parse_test!(json_value_root, " [ 1 , 2,3 ] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [ 1 , 2,3] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [ 1 , 2, 3] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [ 1 , 2 , 3] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [1 , 2 , 3 ] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [ 1 , 2 , 3 ] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [ 1 , #s\n 2 , 3 ] ", Array(vec![Int(1), Int(2), Int(3)]));
+        parse_test!(json_value_root, " [ 1 , #s\n\n 2 , 3 ] ", Array(vec![Int(1), Int(2), Int(3)]));
+
+        let m0 = || Object(HashMap::new());
+        parse_test!(json_value_root, "{}", m0());
+        parse_test!(json_value_root, " {} ", m0());
+        parse_test!(json_value_root, " { } ", m0());
+        parse_test!(json_value_root, " { \n} ", m0());
+        parse_test!(json_value_root, " {\n } ", m0());
+        parse_test!(json_value_root, " { \n } ", m0());
+
+        let m1 = || {
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(1));
+            Object(m)
+        };
+        parse_test!(json_value_root, "{\"a\":1}", m1());
+        parse_test!(json_value_root, " {\"a\":1} ", m1());
+        parse_test!(json_value_root, " { \"a\":1} ", m1());
+        parse_test!(json_value_root, " {\"a\" :1} ", m1());
+        parse_test!(json_value_root, " {\"a\": 1} ", m1());
+        parse_test!(json_value_root, " {\"a\":1 } ", m1());
+        parse_test!(json_value_root, " { \"a\" : 1 } ", m1());
+        parse_test!(json_value_root, "\n{\n\"a\"\n:\n1\n}\n", m1());
+        parse_test!(json_value_root, "\n\n{\n\n\"a\"\n\n:\n\n1\n\n}\n\n", m1());
+        parse_test!(json_value_root, "\n{\n\"a\"\n:# cmt \n1\n}\n", m1());
+
+        let m2 = || {
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(1));
+            m.insert(Str::from("b"), Int(2));
+            Object(m)
+        };
+        parse_test!(json_value_root, "{\"a\":1,\"b\":2}", m2());
+        parse_test!(json_value_root, "{\"a\":1 ,\"b\":2}", m2());
+        parse_test!(json_value_root, "{\"a\":1, \"b\":2}", m2());
+        parse_test!(json_value_root, "{\"a\":1 , \"b\":2}", m2());
+        parse_test!(json_value_root, "{\"a\":1 ,\n \"b\":2}", m2());
+        parse_test!(json_value_root, "{\"a\":1 ,\n\n \"b\":2}", m2());
+    }
+
 }
