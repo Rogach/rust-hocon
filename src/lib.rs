@@ -193,7 +193,11 @@ named!(
                 inferrable_comma,
                 separated_pair!(
                     json_string,
-                    tuple!(json_whitespace, char!(':'), json_whitespace),
+                    tuple!(
+                        json_whitespace,
+                        alt!(char!(':') | char!('=')),
+                        json_whitespace
+                    ),
                     json_value
                 )
             ),
@@ -374,6 +378,20 @@ mod tests {
         };
         parse_test!(json_value_root, "{ \"a\":1\n\"b\":2 }", m2());
         parse_test!(json_value_root, "{ \"a\":1,\n\"b\":2 }", m2());
+    }
+
+    #[test] fn test_equals_instead_of_colon() {
+        parse_test!(json_value, "{\"a\" = 42}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(42));
+            m
+        }));
+        parse_test!(json_value, "{\"a\" = 42,\"b\":43}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(42));
+            m.insert(Str::from("b"), Int(43));
+            m
+        }));
     }
 
 }
