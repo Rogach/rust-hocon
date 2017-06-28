@@ -174,7 +174,7 @@ named!(
     map!(
         delimited!(
             tuple!(char!('['), json_whitespace),
-            separated_list!(
+            separated_list_complete!(
                 inferrable_comma,
                 json_value
             ),
@@ -196,7 +196,7 @@ named!(
 named!(
     json_object_root<&[u8], JsonValue>,
     map!(
-        separated_list!(
+        separated_list_complete!(
             inferrable_comma,
             tuple!(
                 json_string,
@@ -415,6 +415,11 @@ mod tests {
 
     #[test] fn test_dropping_braces_on_root_object() {
         parse_test!(json_value_root, "\"a\" = 42", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(42));
+            m
+        }));
+        parse_test!(json_value_root, "\"a\" = 42\n", Object({
             let mut m = HashMap::new();
             m.insert(Str::from("a"), Int(42));
             m
