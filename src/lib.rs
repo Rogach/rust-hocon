@@ -158,6 +158,15 @@ fn escaped_string(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     return IResult::Incomplete(Needed::Unknown);
 }
 
+named!(
+    multiline_string<&[u8], &[u8]>,
+    delimited!(
+        tag!("\"\"\""),
+        take_until!("\"\"\""),
+        tag!("\"\"\"")
+    )
+);
+
 fn unquoted_string(input: &[u8], allow_dot: bool) -> IResult<&[u8], &[u8]> {
     let len = input.len();
     let mut i = 0;
@@ -183,7 +192,8 @@ fn unquoted_string(input: &[u8], allow_dot: bool) -> IResult<&[u8], &[u8]> {
 named!(
     json_string<&[u8], JsonValue>,
     map!(
-        alt!(
+        alt_complete!(
+            map!(map_res!(multiline_string, str::from_utf8), String::from) |
             delimited!(
                 char!('"'),
                 map_res!(escaped_string, String::from_utf8),
@@ -626,6 +636,18 @@ mod tests {
             escaped_string(&b"a\n"[..]),
             IResult::Error(Err::Position(ErrorKind::IsNot, &b"\n"[..]))
         );
+    }
+
+    #[test] fn test_multiline_strings() {
+        parse_test!(json_value_root, r#"
+a = """
+b
+"""
+"#, Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), String(Str::from("\nb\n")));
+            m
+        }));
     }
 
 }
