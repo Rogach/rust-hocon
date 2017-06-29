@@ -4,6 +4,7 @@ extern crate nom;
 use nom::*;
 use std::collections::HashMap;
 use std::string::String;
+use std::str;
 
 #[derive(Debug, PartialEq)]
 pub enum JsonValue {
@@ -154,16 +155,36 @@ fn escaped_string(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     return IResult::Incomplete(Needed::Unknown);
 }
 
+fn unquoted_string(input: &[u8]) -> IResult<&[u8], &[u8]> {
+    let len = input.len();
+    let mut i = 0;
+    while i < len {
+        let c = input[i];
+        if c == b'/' && i < len - 1 && input[i+1] == b'/' {
+            break;
+        } else if b"$\"{}[]:=,+#`^?!@*&\\ \t\n\r'".iter().any(|b| b == &c) {
+            break;
+        } else {
+            i += 1;
+        }
+    }
+    if i > 0 {
+        return IResult::Done(&input[i..], &input[..i]);
+    } else {
+        return IResult::Incomplete(Needed::Size(1));
+    }
+}
+
 named!(
     json_string<&[u8], JsonValue>,
     map!(
-        map_res!(
+        alt!(
             delimited!(
                 char!('"'),
-                escaped_string,
+                map_res!(escaped_string, String::from_utf8),
                 char!('"')
-            ),
-            String::from_utf8
+            ) |
+            map!(map_res!(unquoted_string, str::from_utf8), String::from)
         ),
         |s| JsonValue::String(s)
     )
@@ -520,6 +541,24 @@ mod tests {
                 m3
             })
         );
+    }
+
+    #[test] fn test_unquoted_strings() {
+        parse_test_eq!(unquoted_string, "alpha");
+        parse_test_eq!(unquoted_string, "alpha.beta");
+        parse_test_eq!(unquoted_string, "1alpha.beta2");
+
+        parse_test!(json_value, "{a = 42}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), Int(42));
+            m
+        }));
+
+        parse_test!(json_value, "{a = bc}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), String(Str::from("bc")));
+            m
+        }));
     }
 
 }
