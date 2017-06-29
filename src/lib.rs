@@ -155,7 +155,7 @@ fn escaped_string(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     return IResult::Incomplete(Needed::Unknown);
 }
 
-fn unquoted_string(input: &[u8]) -> IResult<&[u8], &[u8]> {
+fn unquoted_string(input: &[u8], allow_dot: bool) -> IResult<&[u8], &[u8]> {
     let len = input.len();
     let mut i = 0;
     while i < len {
@@ -163,6 +163,8 @@ fn unquoted_string(input: &[u8]) -> IResult<&[u8], &[u8]> {
         if c == b'/' && i < len - 1 && input[i+1] == b'/' {
             break;
         } else if b"$\"{}[]:=,+#`^?!@*&\\ \t\n\r'".iter().any(|b| b == &c) {
+            break;
+        } else if c == b'.' && !allow_dot {
             break;
         } else {
             i += 1;
@@ -184,7 +186,7 @@ named!(
                 map_res!(escaped_string, String::from_utf8),
                 char!('"')
             ) |
-            map!(map_res!(unquoted_string, str::from_utf8), String::from)
+            map!(map_res!(apply!(unquoted_string, true), str::from_utf8), String::from)
         ),
         |s| JsonValue::String(s)
     )
@@ -236,12 +238,27 @@ fn merge_json(
 }
 
 named!(
+    json_object_path<&[u8], Vec<String>>,
+    separated_list!(
+        tag!("."),
+        alt!(
+            delimited!(
+                char!('"'),
+                map_res!(escaped_string, String::from_utf8),
+                char!('"')
+            ) |
+            map!(map_res!(apply!(unquoted_string, false), str::from_utf8), String::from)
+        )
+    )
+);
+
+named!(
     json_object_root<&[u8], JsonValue>,
     map!(
         separated_list_complete!(
             inferrable_comma,
             tuple!(
-                json_string,
+                json_object_path,
                 alt!(
                     preceded!(json_whitespace, json_object) |
                     preceded!(
@@ -252,21 +269,19 @@ named!(
             )
         ),
         |pairs| {
-            let mut obj = HashMap::new();
+            let mut obj = JsonValue::Object(HashMap::new());
 
-            for (key, value) in pairs {
-                if let JsonValue::String(key_string) = key {
+            for (path, value) in pairs {
+                let next_pair = path.into_iter().rev().fold(value, |v, key| {
+                    let mut m = HashMap::new();
+                    m.insert(key, v);
+                    JsonValue::Object(m)
+                });
 
-                    let new_value = match obj.remove(&key_string) {
-                        Some(old_value) => merge_json(old_value, value),
-                        None => value
-                    };
-                    obj.insert(key_string, new_value);
-
-                }
+                obj = merge_json(obj, next_pair);
             }
 
-            JsonValue::Object(obj)
+            obj
         }
     )
 );
@@ -544,10 +559,6 @@ mod tests {
     }
 
     #[test] fn test_unquoted_strings() {
-        parse_test_eq!(unquoted_string, "alpha");
-        parse_test_eq!(unquoted_string, "alpha.beta");
-        parse_test_eq!(unquoted_string, "1alpha.beta2");
-
         parse_test!(json_value, "{a = 42}", Object({
             let mut m = HashMap::new();
             m.insert(Str::from("a"), Int(42));
@@ -558,6 +569,52 @@ mod tests {
             let mut m = HashMap::new();
             m.insert(Str::from("a"), String(Str::from("bc")));
             m
+        }));
+
+        parse_test!(json_value, "{a = b/c}", Object({
+            let mut m = HashMap::new();
+            m.insert(Str::from("a"), String(Str::from("b/c")));
+            m
+        }));
+    }
+
+    #[test] fn test_object_paths() {
+        parse_test!(json_value_root, "a.b = 43", Object({
+            let mut m1 = HashMap::new();
+            m1.insert(Str::from("b"), Int(43));
+            let mut m2 = HashMap::new();
+            m2.insert(Str::from("a"), Object(m1));
+            m2
+        }));
+
+        parse_test!(json_value_root, "a.b.c = 43", Object({
+            let mut m1 = HashMap::new();
+            m1.insert(Str::from("c"), Int(43));
+            let mut m2 = HashMap::new();
+            m2.insert(Str::from("b"), Object(m1));
+            let mut m3 = HashMap::new();
+            m3.insert(Str::from("a"), Object(m2));
+            m3
+        }));
+
+        parse_test!(json_value_root, "a.\"b\".c = 43", Object({
+            let mut m1 = HashMap::new();
+            m1.insert(Str::from("c"), Int(43));
+            let mut m2 = HashMap::new();
+            m2.insert(Str::from("b"), Object(m1));
+            let mut m3 = HashMap::new();
+            m3.insert(Str::from("a"), Object(m2));
+            m3
+        }));
+
+        parse_test!(json_value_root, "a.\"b.2\".c = 43", Object({
+            let mut m1 = HashMap::new();
+            m1.insert(Str::from("c"), Int(43));
+            let mut m2 = HashMap::new();
+            m2.insert(Str::from("b.2"), Object(m1));
+            let mut m3 = HashMap::new();
+            m3.insert(Str::from("a"), Object(m2));
+            m3
         }));
     }
 
