@@ -7,18 +7,18 @@ use std::string::String;
 use std::str;
 
 #[derive(Debug, PartialEq)]
-pub enum JsonValue {
+pub enum Value {
     Null,
     Boolean(bool),
     Int(i64),
     Float(f64),
     String(String),
-    Array(Vec<JsonValue>),
-    Object(HashMap<String, JsonValue>)
+    Array(Vec<Value>),
+    Object(HashMap<String, Value>)
 }
 
 named!(
-    pub json_value_root<&[u8], JsonValue>,
+    pub json_value_root<&[u8], Value>,
     delimited!(
         json_whitespace,
         alt!(json_object | json_object_root),
@@ -27,7 +27,7 @@ named!(
 );
 
 named!(
-    json_value<&[u8], JsonValue>,
+    json_value<&[u8], Value>,
     alt_complete!(
         json_null |
         json_boolean |
@@ -100,20 +100,20 @@ fn inferrable_comma(input: &[u8]) -> IResult<&[u8], &[u8]> {
 }
 
 named!(
-    json_null<&[u8], JsonValue>,
-    value!(JsonValue::Null, tag!("null"))
+    json_null<&[u8], Value>,
+    value!(Value::Null, tag!("null"))
 );
 
 named!(
-    json_boolean<&[u8], JsonValue>,
+    json_boolean<&[u8], Value>,
     alt!(
-        tag!("true") => { |_| JsonValue::Boolean(true) } |
-        tag!("false") => { |_| JsonValue::Boolean(false) }
+        tag!("true") => { |_| Value::Boolean(true) } |
+        tag!("false") => { |_| Value::Boolean(false) }
     )
 );
 
 named!(
-    json_int<&[u8], JsonValue>,
+    json_int<&[u8], Value>,
     map!(
         flat_map!(
             recognize!(
@@ -124,15 +124,15 @@ named!(
             ),
             parse_to!(i64)
         ),
-        |i:i64| JsonValue::Int(i)
+        |i:i64| Value::Int(i)
     )
 );
 
 named!(
-    json_float<&[u8], JsonValue>,
+    json_float<&[u8], Value>,
     map!(
         double,
-        |i: f64| { JsonValue::Float(i) }
+        |i: f64| { Value::Float(i) }
     )
 );
 
@@ -190,7 +190,7 @@ fn unquoted_string(input: &[u8], allow_dot: bool) -> IResult<&[u8], &[u8]> {
 }
 
 named!(
-    json_string<&[u8], JsonValue>,
+    json_string<&[u8], Value>,
     map!(
         alt_complete!(
             map!(map_res!(multiline_string, str::from_utf8), String::from) |
@@ -201,12 +201,12 @@ named!(
             ) |
             map!(map_res!(apply!(unquoted_string, true), str::from_utf8), String::from)
         ),
-        |s| JsonValue::String(s)
+        |s| Value::String(s)
     )
 );
 
 named!(
-    json_array<&[u8], JsonValue>,
+    json_array<&[u8], Value>,
     map!(
         delimited!(
             tuple!(char!('['), json_whitespace),
@@ -216,12 +216,12 @@ named!(
             ),
             tuple!(json_whitespace, char!(']'))
         ),
-        |elems| JsonValue::Array(elems)
+        |elems| Value::Array(elems)
     )
 );
 
 named!(
-    json_object<&[u8], JsonValue>,
+    json_object<&[u8], Value>,
     delimited!(
         tuple!(char!('{'), json_whitespace),
         json_object_root,
@@ -230,11 +230,11 @@ named!(
 );
 
 fn merge_json(
-    old: JsonValue,
-    new: JsonValue
-) -> JsonValue {
+    old: Value,
+    new: Value
+) -> Value {
     match (old, new) {
-        (JsonValue::Object(mut obj_prev), JsonValue::Object(mut obj_new)) => {
+        (Value::Object(mut obj_prev), Value::Object(mut obj_new)) => {
             for (key, value) in obj_new.drain() {
                 let new_value = match obj_prev.remove(&key) {
                     Some(old_value) => merge_json(old_value, value),
@@ -242,7 +242,7 @@ fn merge_json(
                 };
                 obj_prev.insert(key, new_value);
             }
-            JsonValue::Object(obj_prev)
+            Value::Object(obj_prev)
         },
         (_, new) => {
             new
@@ -266,7 +266,7 @@ named!(
 );
 
 named!(
-    json_object_root<&[u8], JsonValue>,
+    json_object_root<&[u8], Value>,
     map!(
         separated_list_complete!(
             inferrable_comma,
@@ -282,13 +282,13 @@ named!(
             )
         ),
         |pairs| {
-            let mut obj = JsonValue::Object(HashMap::new());
+            let mut obj = Value::Object(HashMap::new());
 
             for (path, value) in pairs {
                 let next_pair = path.into_iter().rev().fold(value, |v, key| {
                     let mut m = HashMap::new();
                     m.insert(key, v);
-                    JsonValue::Object(m)
+                    Value::Object(m)
                 });
 
                 obj = merge_json(obj, next_pair);
@@ -302,7 +302,7 @@ named!(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::JsonValue::*;
+    use super::Value::*;
     use nom::IResult;
     use std::string::String as Str;
 
