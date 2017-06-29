@@ -95,7 +95,7 @@ fn inferrable_comma(input: &[u8]) -> IResult<&[u8], &[u8]> {
     if got_comma || got_newline {
         return IResult::Done(&input[i..], &input[..i]);
     } else {
-        return IResult::Error(error_position!(ErrorKind::Char, b","));
+        return IResult::Error(error_position!(ErrorKind::Char, &input[i..]));
     }
 }
 
@@ -141,13 +141,16 @@ fn escaped_string(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     let mut i = 0;
     let mut s: Vec<u8> = Vec::new();
     while i < len {
-        if i < len - 1 && input[i] == b'\\' && input[i+1] == b'"' {
+        let c = input[i];
+        if c == b'\\' && i < len - 1 && input[i+1] == b'"' {
             s.push(b'"');
             i += 2;
-        } else if input[i] == b'"' {
+        } else if c == b'"' {
             return IResult::Done(&input[i..], s);
+        } else if c == b'\n' {
+            return IResult::Error(error_position!(ErrorKind::IsNot, &input[i..]));
         } else {
-            s.push(input[i]);
+            s.push(c);
             i += 1;
         }
     }
@@ -616,6 +619,13 @@ mod tests {
             m3.insert(Str::from("a"), Object(m2));
             m3
         }));
+    }
+
+    #[test] fn test_no_newlines_in_normal_strings() {
+        assert_eq!(
+            escaped_string(&b"a\n"[..]),
+            IResult::Error(Err::Position(ErrorKind::IsNot, &b"\n"[..]))
+        );
     }
 
 }
