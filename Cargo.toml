@@ -5,3 +5,4 @@ authors = ["Rogach <platon7pronko@gmail.com>"]
 
 [dependencies]
 nom = { version = "^3.1", features = [ "verbose-errors" ] }
+quick-error = "*"
