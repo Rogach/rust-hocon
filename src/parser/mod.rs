@@ -128,7 +128,7 @@ named!(
 fn escaped_string(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     let len = input.len();
     let mut i = 0;
-    let mut s: Vec<u8> = Vec::new();
+    let mut s: Vec<u8> = Vec::with_capacity(len);
     while i < len {
         let c = input[i];
         if c == b'\\' && i < len - 1 && input[i+1] == b'"' {
