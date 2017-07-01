@@ -12,7 +12,10 @@ use nom::IResult;
 use nom::verbose_errors::Err;
 
 pub fn from_str(s: &str) -> Result<Value, Error> {
-    let input = s.as_bytes();
+    from_bytes(s.as_bytes())
+}
+
+pub fn from_bytes(input: &[u8]) -> Result<Value, Error> {
     match parser::json_value_root(input) {
         IResult::Done(rest, value) => {
             if rest == &b""[..] {
