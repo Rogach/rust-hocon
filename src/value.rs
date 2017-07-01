@@ -94,8 +94,8 @@ impl Value {
         })
     }
 
-    pub fn get_string_or(&self, path: &str, default: String) -> String {
-        self.get_string(path).unwrap_or(default)
+    pub fn get_string_or(&self, path: &str, default: &str) -> String {
+        self.get_string(path).unwrap_or(String::from(default))
     }
 
 }
