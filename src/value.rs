@@ -58,6 +58,31 @@ impl Value {
         self.get_bool(path).unwrap_or(default)
     }
 
+    pub fn get_int(&self, path: &str) -> Result<i64, Error> {
+        self.get(path).and_then(|v| {
+            match v {
+                Value::Int(i) => Ok(i),
+                _ => Err(Error::IncompatibleType)
+            }
+        })
+    }
 
+    pub fn get_int_or(&self, path: &str, default: i64) -> i64 {
+        self.get_int(path).unwrap_or(default)
+    }
+
+    pub fn get_float(&self, path: &str) -> Result<f64, Error> {
+        self.get(path).and_then(|v| {
+            match v {
+                Value::Float(f) => Ok(f),
+                Value::Int(i) => Ok(i as f64),
+                _ => Err(Error::IncompatibleType)
+            }
+        })
+    }
+
+    pub fn get_float_or(&self, path: &str, default: f64) -> f64 {
+        self.get_float(path).unwrap_or(default)
+    }
 
 }

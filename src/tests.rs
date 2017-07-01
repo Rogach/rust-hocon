@@ -38,4 +38,11 @@ use std::string::String;
     assert_eq!(from_str("a = \"off\"").unwrap().get_bool("a"), Ok(false));
 
     assert_eq!(from_str("a = \"true\"").unwrap().get_bool_or("b", true), true);
+
+    assert_eq!(from_str("a = 42").unwrap().get_int("a"), Ok(42));
+    assert_eq!(from_str("a = 42").unwrap().get_int_or("a", 80), 42);
+
+    assert_eq!(from_str("a = 42.0").unwrap().get_float("a"), Ok(42.0));
+    assert_eq!(from_str("a = 42").unwrap().get_float("a"), Ok(42.0));
+    assert_eq!(from_str("a = 42.0").unwrap().get_float_or("b", 3.2), 3.2);
 }
