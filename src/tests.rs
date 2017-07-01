@@ -27,4 +27,15 @@ use std::string::String;
     assert_eq!(from_str("a.b = 42").unwrap().get("a.b"), Ok(Value::Int(42)));
     assert_eq!(from_str("a.b.c = 42").unwrap().get("a.b.c"), Ok(Value::Int(42)));
     assert_eq!(from_str("a = 42").unwrap().get("b"), Err(Error::NotFound(String::from("b"))));
+
+    assert_eq!(from_str("a = true").unwrap().get_bool("a"), Ok(true));
+    assert_eq!(from_str("a = false").unwrap().get_bool("a"), Ok(false));
+    assert_eq!(from_str("a = \"true\"").unwrap().get_bool("a"), Ok(true));
+    assert_eq!(from_str("a = \"yes\"").unwrap().get_bool("a"), Ok(true));
+    assert_eq!(from_str("a = \"on\"").unwrap().get_bool("a"), Ok(true));
+    assert_eq!(from_str("a = \"false\"").unwrap().get_bool("a"), Ok(false));
+    assert_eq!(from_str("a = \"no\"").unwrap().get_bool("a"), Ok(false));
+    assert_eq!(from_str("a = \"off\"").unwrap().get_bool("a"), Ok(false));
+
+    assert_eq!(from_str("a = \"true\"").unwrap().get_bool_or("b", true), true);
 }

@@ -18,5 +18,6 @@ quick_error! {
         NotFound(path: String) {
             description("path not found in config")
         }
+        IncompatibleType
     }
 }

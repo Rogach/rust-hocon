@@ -36,4 +36,28 @@ impl Value {
         }
     }
 
+    pub fn get_bool(&self, path: &str) -> Result<bool, Error> {
+        self.get(path).and_then(|v| {
+            match v {
+                Value::Boolean(b) => Ok(b),
+                Value::String(s) => {
+                    if &s == "true" || &s == "yes" || &s == "on" {
+                        Ok(true)
+                    } else if &s == "false" || &s == "no" || &s == "off" {
+                        Ok(false)
+                    } else {
+                        Err(Error::IncompatibleType)
+                    }
+                },
+                _ => Err(Error::IncompatibleType)
+            }
+        })
+    }
+
+    pub fn get_bool_or(&self, path: &str, default: bool) -> bool {
+        self.get_bool(path).unwrap_or(default)
+    }
+
+
+
 }
