@@ -45,4 +45,7 @@ use std::string::String;
     assert_eq!(from_str("a = 42.0").unwrap().get_float("a"), Ok(42.0));
     assert_eq!(from_str("a = 42").unwrap().get_float("a"), Ok(42.0));
     assert_eq!(from_str("a = 42.0").unwrap().get_float_or("b", 3.2), 3.2);
+
+    assert_eq!(from_str("a = \"true\"").unwrap().get_string("a"), Ok(String::from("true")));
+
 }

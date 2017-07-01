@@ -85,4 +85,17 @@ impl Value {
         self.get_float(path).unwrap_or(default)
     }
 
+    pub fn get_string(&self, path: &str) -> Result<String, Error> {
+        self.get(path).and_then(|v| {
+            match v {
+                Value::String(s) => Ok(s),
+                _ => Err(Error::IncompatibleType)
+            }
+        })
+    }
+
+    pub fn get_string_or(&self, path: &str, default: String) -> String {
+        self.get_string(path).unwrap_or(default)
+    }
+
 }
