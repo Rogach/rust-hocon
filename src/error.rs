@@ -12,5 +12,11 @@ quick_error! {
         ParseError(err: String) {
             description("error during parsing")
         }
+        PathError(path: String) {
+            description("incorrect path expression")
+        }
+        NotFound(path: String) {
+            description("path not found in config")
+        }
     }
 }

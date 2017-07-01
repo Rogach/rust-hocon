@@ -240,8 +240,8 @@ fn merge_json(
 }
 
 named!(
-    json_object_path<&[u8], Vec<String>>,
-    separated_list!(
+    pub json_object_path<&[u8], Vec<String>>,
+    separated_list_complete!(
         tag!("."),
         alt!(
             delimited!(

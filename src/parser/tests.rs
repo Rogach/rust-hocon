@@ -289,6 +289,10 @@ macro_rules! parse_test_eq(
 }
 
 #[test] fn test_object_paths() {
+    parse_test!(json_object_path, "ab", vec![Str::from("ab")]);
+    parse_test!(json_object_path, "a.b", vec![Str::from("a"), Str::from("b")]);
+    parse_test!(json_object_path, "a", vec![Str::from("a")]);
+
     parse_test!(json_value_root, "a.b = 43", Object({
         let mut m1 = HashMap::new();
         m1.insert(Str::from("b"), Int(43));
