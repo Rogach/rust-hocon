@@ -6,8 +6,8 @@ mod parser;
 mod error;
 #[cfg(test)] mod tests;
 
-use value::Value;
-use error::Error;
+pub use value::Value;
+pub use error::Error;
 use nom::IResult;
 use nom::verbose_errors::Err;
 
